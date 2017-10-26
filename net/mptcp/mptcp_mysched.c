@@ -31,7 +31,7 @@ static void mptcp_update_stats(struct sock *meta_sk)
   mptcp_for_each_sk(mpcb, sk){
 
     struct tcp_sock *tp = tcp_sk(sk);
-    mysched_priv* priv = mysched_get_priv(tp);
+    struct mysched_priv* priv = mysched_get_priv(tp);
 
     /* setting the scale betwenn first subflow and other subflow is 8:1
      */
@@ -204,7 +204,7 @@ static struct sk_buff *mptcp_my_next_segment(struct sock *meta_sk,
 	const struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
 	struct sock *sk_it, *choose_sk = NULL;
 	struct sk_buff *skb = __mptcp_my_next_segment(meta_sk, reinject);
-	unsigned char split = num_segments;
+	unsigned char split = 1;
 	unsigned char iter = 0, full_subs = 0;
 
 	/* As we set it, we have to reset it as well. */
