@@ -882,6 +882,8 @@ void mptcp_cookies_reqsk_init(struct request_sock *req,
 void mptcp_sock_destruct(struct sock *sk);
 int mptcp_finish_handshake(struct sock *child, struct sk_buff *skb);
 int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen);
+int mptcp_set_num_seg(const struct sock *meta_sk, char __user *optval, int optlen);
+int mptcp_get_num_seg(const struct sock *meta_sk, char __user *optval, int optlen);
 void mptcp_clear_sk(struct sock *sk, int size);
 
 /* MPTCP-path-manager registration/initialization functions */

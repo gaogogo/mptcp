@@ -2574,6 +2574,14 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		release_sock(sk);
 		return err;
 	}
+
+	case MPTCP_SCHED_INFO: {
+
+		lock_sock(sk);
+		err = mptcp_set_num_seg(sk, optval, optlen);
+		release_sock(sk);
+		return err;
+	}
 #endif
 	default:
 		/* fallthru */
@@ -3262,6 +3270,30 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 
 		if (ret)
 			return ret;
+
+		if (put_user(len, optlen))
+			return -EFAULT;
+		return 0;
+	}
+
+	case MPTCP_SCHED_INFO:
+	{
+		int err;
+
+		if (!mptcp(tp))
+			return -EINVAL;
+
+		if (get_user(len, optlen))
+			return -EFAULT;
+
+		len = min_t(unsigned int, len, sizeof(struct mptcp_sched_info));
+
+		lock_sock(sk);
+		err = mptcp_get_num_seg(sk, optval, len);
+		release_sock(sk);
+
+		if (err)
+			return err;
 
 		if (put_user(len, optlen))
 			return -EFAULT;

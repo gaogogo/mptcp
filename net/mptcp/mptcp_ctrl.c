@@ -2497,9 +2497,9 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 	struct mptcp_info m_info;
 
 	unsigned int info_len;
-
-	if (copy_from_user(&m_info, optval, optlen))
+	if (copy_from_user(&m_info, optval, optlen)){
 		return -EFAULT;
+	}
 
 	if (m_info.meta_info) {
 		unsigned int len;
@@ -2509,7 +2509,6 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 		/* Need to set this, if user thinks that tcp_info is bigger than ours */
 		len = min_t(unsigned int, m_info.meta_len, sizeof(meta_info));
 		m_info.meta_len = len;
-
 		if (copy_to_user((void __user *)m_info.meta_info, &meta_info, len))
 			return -EFAULT;
 	}
@@ -2520,7 +2519,6 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 
 	if (m_info.initial) {
 		struct mptcp_cb *mpcb = meta_tp->mpcb;
-
 		if (mpcb->master_sk) {
 			struct tcp_info info;
 
@@ -2533,6 +2531,8 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 		} else {
 			return meta_tp->record_master_info ? -ENOMEM : -EINVAL;
 		}
+
+
 	}
 
 	if (m_info.subflows) {
@@ -2541,7 +2541,6 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 
 		ptr = (char __user *)m_info.subflows;
 		len = m_info.sub_len;
-
 		mptcp_for_each_sk(meta_tp->mpcb, sk) {
 			struct tcp_info t_info;
 			unsigned int tmp_len;
@@ -2574,7 +2573,6 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 		sub_info_len = min_t(unsigned int, m_info.sub_info_len,
 				     sizeof(struct mptcp_sub_info));
 		m_info.sub_info_len = sub_info_len;
-
 		mptcp_for_each_sk(meta_tp->mpcb, sk) {
 			struct mptcp_sub_info m_sub_info;
 			unsigned int tmp_len;
@@ -2595,10 +2593,12 @@ int mptcp_get_info(const struct sock *meta_sk, char __user *optval, int optlen)
 		}
 
 		m_info.total_sub_info_len = total_sub_info_len;
+
 	}
 
-	if (copy_to_user(optval, &m_info, optlen))
+	if (copy_to_user(optval, &m_info, optlen)){
 		return -EFAULT;
+	}
 
 	return 0;
 }
@@ -2896,4 +2896,102 @@ mptcp_cb_cache_failed:
 	kmem_cache_destroy(mptcp_sock_cache);
 mptcp_sock_cache_failed:
 	mptcp_init_failed = true;
+}
+
+struct mysched_priv{
+  unsigned char quota;
+  /* The number of consecutive segments that are part of a burst */
+  unsigned char num_segments;
+};
+
+static inline struct mysched_priv *mysched_get_priv(const struct tcp_sock *tp)
+{
+	return (struct mysched_priv *)&tp->mptcp->mptcp_sched[0];
+}
+
+int mptcp_set_num_seg(const struct sock *meta_sk, char __user *optval, int optlen)
+{
+	const struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+	struct sock *sk;
+	struct mptcp_sched_info sinfo;
+
+	if(copy_from_user(&sinfo, optval, optlen)){
+		mptcp_debug("copy from user error!\n");
+		return -EFAULT;
+	}
+
+	unsigned int val_len = sinfo.len;
+	unsigned char __user *num_seg_val;
+	num_seg_val = (unsigned char __user *)sinfo.num_segments;
+
+	int count = 1;
+	mptcp_for_each_sk(meta_tp->mpcb, sk) {
+
+
+		struct tcp_sock *tp = tcp_sk(sk);
+		struct mysched_priv *priv = mysched_get_priv(tp);
+		unsigned char val;
+
+		copy_from_user(&val, num_seg_val, 1);
+
+		mptcp_debug("try update subflows %d num_segments from %d to %d\n", count,
+									priv->num_segments, val);
+
+		priv->num_segments = val;
+
+		num_seg_val += 1;
+
+		if (val_len == count)
+			break;
+		count++;
+	}
+	return 0;
+}
+
+int mptcp_get_num_seg(const struct sock *meta_sk, char __user *optval, int optlen)
+{
+	const struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+	struct sock *sk;
+	struct mptcp_sched_info sinfo;
+
+	if(copy_from_user(&sinfo, optval, optlen)) {
+		mptcp_debug("copy from user error!\n");
+		return -EFAULT;
+	}
+
+	unsigned int len = sinfo.len;
+	unsigned char __user *ptr_q;
+	unsigned char __user *ptr_s;
+
+	ptr_q = (unsigned char __user *)sinfo.quota;
+	ptr_s = (unsigned char __user *)sinfo.num_segments;
+
+	mptcp_debug("get sched info!\n");
+
+	int count=1;
+	mptcp_for_each_sk(meta_tp->mpcb, sk) {
+		struct tcp_sock *tp = tcp_sk(sk);
+		struct mysched_priv *priv = mysched_get_priv(tp);
+
+		unsigned char q = priv->quota;
+		if(copy_to_user(ptr_q, &q, 1)) {
+			mptcp_debug("copy to user error! and q=%d\n", q);
+			return -EFAULT;
+		}
+
+		unsigned char s = priv->num_segments;
+		if(copy_to_user(ptr_s, &s, 1)){
+			mptcp_debug("copy to user error! and s=%d\n", s);
+			return -EFAULT;
+		}
+
+		mptcp_debug("try get subflows %d quota=%d and num_segments=%d\n", count, q, s);
+		ptr_q += 1;
+		ptr_s += 1;
+
+		if(len == count)
+			break;
+		count++;
+	}
+	return 0;
 }
