@@ -73,6 +73,10 @@ static bool mptcp_my_is_available(const struct sock *sk, const struct sk_buff *s
 			return false;
 	}
 
+  /* if num_segments == 0, we hope do not use the subflow */
+  if  (!mysched_get_priv(tp)->num_segments)
+    return false;
+
 	if (!cwnd_test)
 		goto zero_wnd_test;
 
@@ -126,6 +130,8 @@ static struct sock *my_get_available_subflow(struct sock *meta_sk,
 	}
 
 	/* First, find the best subflow */
+  /* get the subflow which has max space=num_segments-quota */
+  /* */
 	mptcp_for_each_sk(mpcb, sk) {
 		struct tcp_sock *tp = tcp_sk(sk);
 
@@ -210,7 +216,8 @@ static struct sk_buff *mptcp_my_next_segment(struct sock *meta_sk,
 	}
 
 retry:
-
+  choose_sk = NULL;
+  split = 0;
 	/* First, we look for a subflow who is currently being used */
 	mptcp_for_each_sk(mpcb, sk_it) {
 		struct tcp_sock *tp_it = tcp_sk(sk_it);
@@ -222,15 +229,9 @@ retry:
 		iter++;
 
 		/* Is this subflow currently being used? */
-		if (msp->quota > 0 && msp->quota < msp->num_segments) {
-			split = msp->num_segments - msp->quota;
-			choose_sk = sk_it;
-			goto found;
-		}
-
-		/* Or, it's totally unused */
-		if (!msp->quota) {
-			split = msp->num_segments;
+		if (msp->quota >= 0 && msp->quota < msp->num_segments &&
+      msp->num_segments - msp->quota > split) {
+			split = msp->num_segments - msp->quota; 
 			choose_sk = sk_it;
 		}
 
@@ -239,6 +240,8 @@ retry:
 			full_subs++;
 	}
 
+  if (!choose_sk)
+    goto found;
 	/* All considered subflows have a full quota, and we considered at
 	 * least one.
 	 */
